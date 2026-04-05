@@ -5,12 +5,17 @@ import { useState, useRef, useEffect } from 'react';
 import { WalletLeaderboard, WalletLeaderboardSkeleton } from '@/components/tools/wallet-leaderboard';
 import { ClusterSignalCards, ClusterSignalSkeleton } from '@/components/tools/cluster-signal-card';
 import { TradeConfirmation, TradeSkeleton } from '@/components/tools/trade-confirmation';
+import { WalletOverviewCard, WalletOverviewSkeleton } from '@/components/tools/wallet-overview-card';
+import { TokenScreenerTable, TokenScreenerSkeleton } from '@/components/tools/token-screener-table';
+import { GenericTable, GenericTableSkeleton } from '@/components/tools/generic-table';
 
 const SUGGESTED_QUESTIONS = [
   'Who are the smartest wallets on Solana?',
   'What tokens are smart money converging on?',
-  'Why is smart money buying PUMP?',
-  'Buy $20 of PUMP',
+  'Screen top tokens on Ethereum by volume',
+  'Show the perp leaderboard on Hyperliquid',
+  'Search prediction markets for crypto',
+  'What are smart money wallets holding?',
 ];
 
 const TOOL_LOADING: Record<string, string> = {
@@ -18,7 +23,61 @@ const TOOL_LOADING: Record<string, string> = {
   detectClusters: 'Detecting cluster signals...',
   explainSignal: 'Analyzing signal context...',
   executeTrade: 'Preparing trade quote...',
+  smartMoneyDexTrades: 'Loading DEX trades...',
+  smartMoneyPerps: 'Loading perp trades...',
+  smartMoneyHoldings: 'Loading smart money holdings...',
+  walletOverview: 'Profiling wallet...',
+  walletTransactions: 'Loading transactions...',
+  walletRelationships: 'Mapping related wallets...',
+  walletCompare: 'Comparing wallets...',
+  tokenScreener: 'Screening tokens...',
+  tokenInfo: 'Loading token info...',
+  tokenFlows: 'Analyzing token flows...',
+  tokenHolders: 'Loading holder data...',
+  tokenTrading: 'Loading trading activity...',
+  perpScreener: 'Screening perps...',
+  perpLeaderboard: 'Loading perp leaderboard...',
+  predictionMarketScreener: 'Searching markets...',
+  predictionMarketDetail: 'Loading market data...',
+  bridgeStatus: 'Checking bridge status...',
+  manageAlerts: 'Managing alerts...',
+  searchNansen: 'Searching Nansen...',
 };
+
+// Tools that get specialized components
+const SPECIALIZED_TOOLS = new Set([
+  'scoreWallets', 'detectClusters', 'executeTrade',
+  'walletOverview', 'tokenScreener',
+]);
+
+function renderToolOutput(toolName: string, output: unknown) {
+  const data = output as Record<string, unknown>;
+  switch (toolName) {
+    case 'scoreWallets':
+      return <WalletLeaderboard data={data as any} />;
+    case 'detectClusters':
+      return <ClusterSignalCards data={data as any} />;
+    case 'executeTrade':
+      return <TradeConfirmation data={data as any} />;
+    case 'walletOverview':
+      return <WalletOverviewCard data={data} />;
+    case 'tokenScreener':
+      return <TokenScreenerTable data={data as any} />;
+    default:
+      return <GenericTable data={data} />;
+  }
+}
+
+function renderToolSkeleton(toolName: string) {
+  switch (toolName) {
+    case 'scoreWallets': return <WalletLeaderboardSkeleton />;
+    case 'detectClusters': return <ClusterSignalSkeleton />;
+    case 'executeTrade': return <TradeSkeleton />;
+    case 'walletOverview': return <WalletOverviewSkeleton />;
+    case 'tokenScreener': return <TokenScreenerSkeleton />;
+    default: return <GenericTableSkeleton />;
+  }
+}
 
 export default function Home() {
   const { messages, sendMessage, status } = useChat();
@@ -59,8 +118,11 @@ export default function Home() {
           {showGreeting && (
             <div className="flex flex-col items-center justify-center min-h-[60vh] text-center">
               <h1 className="text-2xl font-bold font-mono text-data mb-2">SignalStack</h1>
-              <p className="text-muted-foreground text-sm mb-8 max-w-md">
-                AI-powered smart money intelligence. Ask about wallets, signals, and trades on Solana.
+              <p className="text-muted-foreground text-sm mb-2 max-w-md">
+                AI-powered onchain analytics across 18 chains. Smart money tracking, wallet profiling, token analysis, perps, prediction markets, and trading.
+              </p>
+              <p className="text-muted-foreground/60 text-xs mb-8 max-w-md">
+                Powered by Nansen CLI with 22 tools covering the full platform.
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full max-w-lg">
                 {SUGGESTED_QUESTIONS.map((q) => (
@@ -105,44 +167,18 @@ export default function Home() {
                           </div>
                         );
                       }
-                      // In AI SDK v6, tool parts have type `tool-${name}`
                       if (part.type.startsWith('tool-')) {
                         const toolName = part.type.replace('tool-', '');
                         const { toolCallId, state } = part as { toolCallId: string; state: string; output?: unknown };
                         const output = (part as Record<string, unknown>).output;
 
                         if (state === 'output-available' && output) {
-                          return (
-                            <div key={toolCallId}>
-                              {toolName === 'scoreWallets' ? (
-                                <WalletLeaderboard data={output as any} />
-                              ) : toolName === 'detectClusters' ? (
-                                <ClusterSignalCards data={output as any} />
-                              ) : toolName === 'executeTrade' ? (
-                                <TradeConfirmation data={output as any} />
-                              ) : (
-                                <pre className="text-xs text-muted-foreground overflow-auto p-3 bg-surface rounded-lg border border-border/50 font-mono">
-                                  {JSON.stringify(output, null, 2)}
-                                </pre>
-                              )}
-                            </div>
-                          );
+                          return <div key={toolCallId}>{renderToolOutput(toolName, output)}</div>;
                         }
 
                         return (
                           <div key={toolCallId}>
-                            {toolName === 'scoreWallets' ? (
-                              <WalletLeaderboardSkeleton />
-                            ) : toolName === 'detectClusters' ? (
-                              <ClusterSignalSkeleton />
-                            ) : toolName === 'executeTrade' ? (
-                              <TradeSkeleton />
-                            ) : (
-                              <div className="flex items-center gap-2 p-3 bg-surface rounded-lg border border-border/50 animate-pulse font-mono text-xs text-muted-foreground">
-                                <div className="size-2 rounded-full bg-data animate-ping" />
-                                {TOOL_LOADING[toolName] || 'Processing...'}
-                              </div>
-                            )}
+                            {renderToolSkeleton(toolName)}
                           </div>
                         );
                       }
@@ -177,7 +213,7 @@ export default function Home() {
           <input
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Ask about smart money on Solana..."
+            placeholder="Ask about smart money, tokens, wallets, perps, predictions..."
             className="flex-1 bg-surface border border-border/50 rounded-xl px-4 py-3 text-sm font-mono text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-data/50 transition-colors"
             disabled={isLoading}
           />

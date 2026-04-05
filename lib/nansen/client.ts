@@ -1,4 +1,11 @@
-import type { NetflowToken, WhoBoughtSoldEntry, WalletScore, ClusterSignal, TradeConfirmation } from './types';
+import type {
+  NetflowToken, WhoBoughtSoldEntry, WalletScore, ClusterSignal, TradeConfirmation,
+  SmartMoneyDexTrade, SmartMoneyPerpTrade, SmartMoneyHolding,
+  WalletTransaction, WalletCounterparty, RelatedWallet,
+  TokenScreenerEntry, TokenFlowSegment, TokenHolder,
+  PerpContract, PerpLeaderboardEntry,
+  PredictionMarket, Alert, SearchResult,
+} from './types';
 
 let apiInstance: InstanceType<typeof import('nansen-cli/src/api.js').default> | null = null;
 
@@ -10,14 +17,24 @@ async function getApi() {
   return apiInstance;
 }
 
+/** Export raw API instance for advanced tools that need direct access */
+export async function getApiInstance() {
+  return getApi();
+}
+
 function extractArray(result: Record<string, unknown>): unknown[] {
   const data = result?.data;
   if (Array.isArray(data)) return data;
-  if (data && typeof data === 'object' && 'data' in data) {
-    const inner = (data as Record<string, unknown>).data;
-    if (Array.isArray(inner)) return inner;
+  if (data && typeof data === 'object') {
+    const obj = data as Record<string, unknown>;
+    if ('data' in obj && Array.isArray(obj.data)) return obj.data as unknown[];
+    if ('results' in obj && Array.isArray(obj.results)) return obj.results as unknown[];
   }
   return [];
+}
+
+function extractObject(result: Record<string, unknown>): Record<string, unknown> {
+  return (result?.data ?? result ?? {}) as Record<string, unknown>;
 }
 
 /**
@@ -201,4 +218,230 @@ export async function getTradeQuote(params: { tokenAddress: string; amountUsd: n
       execution_price: 0, slippage_pct: 0, tx_hash: '', status: 'failed', chain,
     };
   }
+}
+
+// ── Smart Money ─────────────────────────────────────────────────────
+
+export async function getSmartMoneyDexTrades(params: { chain?: string; limit?: number } = {}): Promise<SmartMoneyDexTrade[]> {
+  const api = await getApi();
+  const result = await api.smartMoneyDexTrades({ chains: [params.chain || 'solana'], limit: params.limit || 30 });
+  return extractArray(result as Record<string, unknown>) as SmartMoneyDexTrade[];
+}
+
+export async function getSmartMoneyPerpTrades(params: { limit?: number } = {}): Promise<SmartMoneyPerpTrade[]> {
+  const api = await getApi();
+  const result = await api.smartMoneyPerpTrades({ limit: params.limit || 30 });
+  return extractArray(result as Record<string, unknown>) as SmartMoneyPerpTrade[];
+}
+
+export async function getSmartMoneyHoldings(params: { chain?: string; limit?: number } = {}): Promise<SmartMoneyHolding[]> {
+  const api = await getApi();
+  const result = await api.smartMoneyHoldings({ chains: [params.chain || 'solana'], limit: params.limit || 50 });
+  return extractArray(result as Record<string, unknown>) as SmartMoneyHolding[];
+}
+
+export async function getSmartMoneyHistoricalHoldings(params: { chain?: string; days?: number } = {}): Promise<unknown[]> {
+  const api = await getApi();
+  const result = await api.smartMoneyHistoricalHoldings({ chains: [params.chain || 'solana'], days: params.days || 30 });
+  return extractArray(result as Record<string, unknown>);
+}
+
+// ── Wallet Intelligence ─────────────────────────────────────────────
+
+export async function getWalletBalance(params: { address: string; chain?: string }): Promise<unknown[]> {
+  const api = await getApi();
+  const result = await api.addressBalance({ address: params.address, chain: params.chain || 'ethereum' });
+  return extractArray(result as Record<string, unknown>);
+}
+
+export async function getWalletLabels(params: { address: string; chain?: string }): Promise<unknown[]> {
+  const api = await getApi();
+  const result = await api.addressLabels({ address: params.address, chain: params.chain || 'ethereum' });
+  return extractArray(result as Record<string, unknown>);
+}
+
+export async function getWalletTransactions(params: { address: string; chain?: string; days?: number; limit?: number }): Promise<WalletTransaction[]> {
+  const api = await getApi();
+  const result = await api.addressTransactions({ address: params.address, chain: params.chain || 'ethereum', days: params.days || 30, limit: params.limit || 30 });
+  return extractArray(result as Record<string, unknown>) as WalletTransaction[];
+}
+
+export async function getWalletCounterparties(params: { address: string; chain?: string; days?: number }): Promise<WalletCounterparty[]> {
+  const api = await getApi();
+  const result = await api.addressCounterparties({ address: params.address, chain: params.chain || 'ethereum', days: params.days || 30 });
+  return extractArray(result as Record<string, unknown>) as WalletCounterparty[];
+}
+
+export async function getWalletRelated(params: { address: string; chain?: string }): Promise<RelatedWallet[]> {
+  const api = await getApi();
+  const result = await api.addressRelatedWallets({ address: params.address, chain: params.chain || 'ethereum' });
+  return extractArray(result as Record<string, unknown>) as RelatedWallet[];
+}
+
+export async function getWalletPnlDetails(params: { address: string; chain?: string; days?: number }): Promise<unknown[]> {
+  const api = await getApi();
+  const result = await api.addressPnl({ address: params.address, chain: params.chain || 'ethereum', days: params.days || 90 });
+  return extractArray(result as Record<string, unknown>);
+}
+
+// ── Token Analysis ──────────────────────────────────────────────────
+
+export async function getTokenScreener(params: { chain?: string; timeframe?: string; limit?: number } = {}): Promise<TokenScreenerEntry[]> {
+  const api = await getApi();
+  const result = await api.tokenScreener({ chain: params.chain || 'solana', timeframe: params.timeframe || '24h', limit: params.limit || 50 });
+  return extractArray(result as Record<string, unknown>) as TokenScreenerEntry[];
+}
+
+export async function getTokenInfo(params: { tokenAddress: string; chain?: string }): Promise<Record<string, unknown>> {
+  const api = await getApi();
+  const result = await api.tokenInformation({ tokenAddress: params.tokenAddress, chain: params.chain || 'solana' });
+  return extractObject(result as Record<string, unknown>);
+}
+
+export async function getTokenIndicators(params: { tokenAddress: string; chain?: string }): Promise<Record<string, unknown>> {
+  const api = await getApi();
+  const result = await api.tokenIndicators({ tokenAddress: params.tokenAddress, chain: params.chain || 'solana' });
+  return extractObject(result as Record<string, unknown>);
+}
+
+export async function getTokenFlows(params: { tokenAddress: string; chain?: string; days?: number; label?: string }): Promise<unknown[]> {
+  const api = await getApi();
+  const result = await api.tokenFlows({ tokenAddress: params.tokenAddress, chain: params.chain || 'solana', days: params.days || 7, label: params.label });
+  return extractArray(result as Record<string, unknown>);
+}
+
+export async function getTokenFlowIntelligence(params: { tokenAddress: string; chain?: string; timeframe?: string }): Promise<TokenFlowSegment[]> {
+  const api = await getApi();
+  const result = await api.tokenFlowIntelligence({ tokenAddress: params.tokenAddress, chain: params.chain || 'solana', timeframe: params.timeframe || '24h' });
+  return extractArray(result as Record<string, unknown>) as TokenFlowSegment[];
+}
+
+export async function getTokenHolders(params: { tokenAddress: string; chain?: string; limit?: number }): Promise<TokenHolder[]> {
+  const api = await getApi();
+  const result = await api.tokenHolders({ tokenAddress: params.tokenAddress, chain: params.chain || 'solana', limit: params.limit || 30 });
+  return extractArray(result as Record<string, unknown>) as TokenHolder[];
+}
+
+export async function getTokenDexTrades(params: { tokenAddress: string; chain?: string; days?: number; limit?: number }): Promise<unknown[]> {
+  const api = await getApi();
+  const result = await api.tokenDexTrades({ tokenAddress: params.tokenAddress, chain: params.chain || 'solana', days: params.days || 7, limit: params.limit || 30 });
+  return extractArray(result as Record<string, unknown>);
+}
+
+export async function getTokenOhlcv(params: { tokenAddress: string; chain?: string; timeframe?: string }): Promise<unknown[]> {
+  const api = await getApi();
+  const result = await api.tokenOhlcv({ tokenAddress: params.tokenAddress, chain: params.chain || 'solana', timeframe: params.timeframe || '1h' });
+  return extractArray(result as Record<string, unknown>);
+}
+
+// ── Perpetual Futures ───────────────────────────────────────────────
+
+export async function getPerpScreener(params: { days?: number; limit?: number } = {}): Promise<PerpContract[]> {
+  const api = await getApi();
+  const result = await api.perpScreener({ days: params.days || 7, limit: params.limit || 30 });
+  return extractArray(result as Record<string, unknown>) as PerpContract[];
+}
+
+export async function getPerpLeaderboard(params: { days?: number; limit?: number } = {}): Promise<PerpLeaderboardEntry[]> {
+  const api = await getApi();
+  const result = await api.perpLeaderboard({ days: params.days || 7, limit: params.limit || 30 });
+  return extractArray(result as Record<string, unknown>) as PerpLeaderboardEntry[];
+}
+
+// ── Prediction Markets ──────────────────────────────────────────────
+
+export async function getPredictionMarketScreener(params: { query?: string; mode?: 'market' | 'event' | 'categories' } = {}): Promise<PredictionMarket[]> {
+  const api = await getApi();
+  const mode = params.mode || 'market';
+  let result;
+  if (mode === 'event') {
+    result = await api.pmEventScreener({ query: params.query });
+  } else if (mode === 'categories') {
+    result = await api.pmCategories();
+  } else {
+    result = await api.pmMarketScreener({ query: params.query });
+  }
+  return extractArray(result as Record<string, unknown>) as PredictionMarket[];
+}
+
+export async function getPredictionMarketDetail(params: { marketId: string; include?: string[] }): Promise<Record<string, unknown>> {
+  const api = await getApi();
+  const include = params.include || ['ohlcv', 'orderbook', 'topHolders'];
+  const results: Record<string, unknown> = { marketId: params.marketId };
+
+  const calls = include.map(async (field) => {
+    try {
+      switch (field) {
+        case 'ohlcv': results.ohlcv = extractArray(await api.pmOhlcv({ marketId: params.marketId }) as Record<string, unknown>); break;
+        case 'orderbook': results.orderbook = extractObject(await api.pmOrderbook({ marketId: params.marketId }) as Record<string, unknown>); break;
+        case 'topHolders': results.topHolders = extractArray(await api.pmTopHolders({ marketId: params.marketId }) as Record<string, unknown>); break;
+        case 'trades': results.trades = extractArray(await api.pmTradesByMarket({ marketId: params.marketId }) as Record<string, unknown>); break;
+        case 'pnl': results.pnl = extractObject(await api.pmPnlByMarket({ marketId: params.marketId }) as Record<string, unknown>); break;
+      }
+    } catch { /* individual field failure is ok */ }
+  });
+  await Promise.all(calls);
+  return results;
+}
+
+// ── Alerts ───────────────────────────────────────────────────────────
+
+export async function listAlerts(): Promise<Alert[]> {
+  const api = await getApi();
+  const result = await api.alertsList();
+  return extractArray(result as Record<string, unknown>) as Alert[];
+}
+
+export async function createAlert(params: { name: string; type: string; chains?: string[]; description?: string; [k: string]: unknown }): Promise<Record<string, unknown>> {
+  const api = await getApi();
+  const result = await api.alertsCreate(params as { name: string; type: string; [k: string]: unknown });
+  return extractObject(result as Record<string, unknown>);
+}
+
+export async function updateAlert(params: { id: string; [k: string]: unknown }): Promise<Record<string, unknown>> {
+  const api = await getApi();
+  const result = await api.alertsUpdate(params as { id: string; [k: string]: unknown });
+  return extractObject(result as Record<string, unknown>);
+}
+
+export async function toggleAlert(params: { id: string; enabled: boolean }): Promise<Record<string, unknown>> {
+  const api = await getApi();
+  const result = await api.alertsToggle({ id: params.id, enabled: params.enabled, disabled: !params.enabled });
+  return extractObject(result as Record<string, unknown>);
+}
+
+export async function deleteAlert(params: { id: string }): Promise<Record<string, unknown>> {
+  const api = await getApi();
+  const result = await api.alertsDelete({ id: params.id });
+  return extractObject(result as Record<string, unknown>);
+}
+
+// ── Search ───────────────────────────────────────────────────────────
+
+export async function searchNansen(params: { query: string; type?: string; limit?: number }): Promise<SearchResult[]> {
+  const api = await getApi();
+  const result = await api.generalSearch({ query: params.query, type: params.type, limit: params.limit || 20 });
+  return extractArray(result as Record<string, unknown>) as SearchResult[];
+}
+
+export async function searchEntities(params: { query: string }): Promise<unknown[]> {
+  const api = await getApi();
+  const result = await api.entitySearch({ query: params.query });
+  return extractArray(result as Record<string, unknown>);
+}
+
+// ── Bridge ───────────────────────────────────────────────────────────
+
+export async function getBridgeStatus(params: { txHash: string; fromChain: string; toChain: string }): Promise<Record<string, unknown>> {
+  const { getBridgeStatus: bridgeStatus } = await import('nansen-cli/src/trading.js');
+  return bridgeStatus(params.txHash, params.fromChain, params.toChain);
+}
+
+// ── Account ──────────────────────────────────────────────────────────
+
+export async function getAccountStatus(): Promise<{ plan: string; credits_remaining: number }> {
+  const api = await getApi();
+  const result = await api.getAccount();
+  const data = (result?.data ?? result) as Record<string, unknown>;
+  return { plan: (data?.plan as string) ?? 'unknown', credits_remaining: (data?.credits_remaining as number) ?? 0 };
 }

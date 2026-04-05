@@ -1,44 +1,83 @@
 import { streamText, stepCountIs, convertToModelMessages } from 'ai';
 import { createAnthropic } from '@ai-sdk/anthropic';
+import { systemPrompt } from '@/lib/ai/system-prompt';
+
+// Smart Money
 import { scoreWallets } from '@/lib/ai/tools/score-wallets';
 import { detectClusters } from '@/lib/ai/tools/detect-clusters';
+import { smartMoneyDexTrades } from '@/lib/ai/tools/smart-money-dex-trades';
+import { smartMoneyPerps } from '@/lib/ai/tools/smart-money-perps';
+import { smartMoneyHoldings } from '@/lib/ai/tools/smart-money-holdings';
+
+// Wallet Intelligence
+import { walletOverview } from '@/lib/ai/tools/wallet-overview';
+import { walletTransactions } from '@/lib/ai/tools/wallet-transactions';
+import { walletRelationships } from '@/lib/ai/tools/wallet-relationships';
+import { walletCompare } from '@/lib/ai/tools/wallet-compare';
+
+// Token Analysis
+import { tokenScreener } from '@/lib/ai/tools/token-screener';
+import { tokenInfo } from '@/lib/ai/tools/token-info';
+import { tokenFlows } from '@/lib/ai/tools/token-flows';
+import { tokenHolders } from '@/lib/ai/tools/token-holders';
+import { tokenTrading } from '@/lib/ai/tools/token-trading';
 import { explainSignal } from '@/lib/ai/tools/explain-signal';
+
+// Perps
+import { perpScreener } from '@/lib/ai/tools/perp-screener';
+import { perpLeaderboard } from '@/lib/ai/tools/perp-leaderboard';
+
+// Prediction Markets
+import { predictionMarketScreener } from '@/lib/ai/tools/prediction-market-screener';
+import { predictionMarketDetail } from '@/lib/ai/tools/prediction-market-detail';
+
+// Trading
 import { executeTrade } from '@/lib/ai/tools/execute-trade';
+import { bridgeStatus } from '@/lib/ai/tools/bridge-status';
 
-export const maxDuration = 60;
+// Alerts & Search
+import { manageAlerts } from '@/lib/ai/tools/alerts';
+import { searchNansen as searchNansenTool } from '@/lib/ai/tools/search';
 
-// SS_CLAUDE_KEY avoids conflict with system env's empty ANTHROPIC_API_KEY (set by Claude Desktop)
+export const maxDuration = 120;
+
 const anthropic = createAnthropic({
   baseURL: 'https://api.anthropic.com/v1',
   apiKey: process.env.SS_CLAUDE_KEY || process.env.ANTHROPIC_API_KEY || '',
 });
 const model = anthropic('claude-sonnet-4-20250514');
 
-const systemPromptText = `You are SignalStack — an AI analyst for onchain smart money. You analyze blockchain data from Nansen, score wallets by performance, detect cluster convergence signals, explain why smart money is moving, and can execute trades.
-
-## Your Tools
-
-- **scoreWallets**: Use when asked about smart wallets, traders, leaderboards, or who's making money.
-- **detectClusters**: Use when asked what smart money is buying, converging on, or where the signals are.
-- **explainSignal**: Use when asked WHY smart money is moving into a token.
-- **executeTrade**: Use when asked to buy, trade, or execute. ALWAYS show the quote first and ask for confirmation. Maximum $50.
-
-## Rules
-
-1. Always use tools first. Don't speculate without data.
-2. Cite specifics: wallet addresses (truncated), scores, dollar amounts.
-3. Be concise. Lead with the insight, then the evidence.
-4. Chain tools when needed. "What should I buy?" = detectClusters then explainSignal on the top result.
-
-## Personality
-
-Direct, data-driven, concise. Crypto-native tone. Flag risks.`;
-
 const allTools = {
+  // Smart Money (5)
   scoreWallets,
   detectClusters,
+  smartMoneyDexTrades,
+  smartMoneyPerps,
+  smartMoneyHoldings,
+  // Wallet (4)
+  walletOverview,
+  walletTransactions,
+  walletRelationships,
+  walletCompare,
+  // Token (6)
+  tokenScreener,
+  tokenInfo,
+  tokenFlows,
+  tokenHolders,
+  tokenTrading,
   explainSignal,
+  // Perps (2)
+  perpScreener,
+  perpLeaderboard,
+  // Prediction Markets (2)
+  predictionMarketScreener,
+  predictionMarketDetail,
+  // Trading (2)
   executeTrade,
+  bridgeStatus,
+  // Alerts & Search (2)
+  manageAlerts,
+  searchNansen: searchNansenTool,
 };
 
 export async function POST(request: Request) {
@@ -49,10 +88,10 @@ export async function POST(request: Request) {
 
   const result = streamText({
     model,
-    system: systemPromptText,
+    system: systemPrompt,
     messages: modelMessages,
     tools: allTools,
-    stopWhen: stepCountIs(5),
+    stopWhen: stepCountIs(8),
   });
 
   return result.toUIMessageStreamResponse();
