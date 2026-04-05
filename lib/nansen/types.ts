@@ -17,13 +17,17 @@ export interface ClusterSignal {
   token_address: string;
   chain: string;
   wallets: WalletScore[];
+  trader_count: number;
   avg_score: number;
   signal_strength: number;
   first_buy_at: string;
   window_hours: number;
   conviction: 'low' | 'medium' | 'high';
   net_flow_7d_usd: number;
+  net_flow_24h_usd: number;
   market_cap_usd: number;
+  token_sectors: string[];
+  token_age_days: number;
 }
 
 export interface TradeConfirmation {

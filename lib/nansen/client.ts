@@ -10,8 +10,6 @@ async function getApi() {
   return apiInstance;
 }
 
-// The nansen-cli programmatic API returns { data: [...], pagination: {...} }
-// where data is the array of results directly (not nested as data.data)
 function extractArray(result: Record<string, unknown>): unknown[] {
   const data = result?.data;
   if (Array.isArray(data)) return data;
@@ -22,15 +20,22 @@ function extractArray(result: Record<string, unknown>): unknown[] {
   return [];
 }
 
+/**
+ * Fetch ALL tokens with smart money activity on a chain.
+ * One API call, ~50 credits, returns the complete picture (187 tokens on Solana).
+ */
 export async function getSmartMoneyNetflow(params: { chain?: string; limit?: number } = {}): Promise<NetflowToken[]> {
   const api = await getApi();
   const result = await api.smartMoneyNetflow({
     chains: [params.chain || 'solana'],
-    limit: params.limit || 50,
+    limit: params.limit || 200, // Get everything — Solana has ~187 tokens with SM activity
   });
   return extractArray(result as Record<string, unknown>) as NetflowToken[];
 }
 
+/**
+ * Get wallets that bought/sold a specific token. ~10 credits per call.
+ */
 export async function getWhoBoughtSold(params: { tokenAddress: string; chain?: string; limit?: number }): Promise<WhoBoughtSoldEntry[]> {
   const api = await getApi();
   const result = await api.tokenWhoBoughtSold({
@@ -41,6 +46,10 @@ export async function getWhoBoughtSold(params: { tokenAddress: string; chain?: s
   return extractArray(result as Record<string, unknown>) as WhoBoughtSoldEntry[];
 }
 
+/**
+ * Get PnL summary for a specific wallet. ~10 credits per call.
+ * Only use for deep analysis on specific wallets, not bulk scanning.
+ */
 export async function getWalletPnlSummary(params: { address: string; chain?: string; days?: number }): Promise<{
   realized_pnl_usd: number;
   realized_pnl_percent: number;
@@ -55,7 +64,6 @@ export async function getWalletPnlSummary(params: { address: string; chain?: str
     chain: params.chain || 'solana',
     days: params.days || 90,
   });
-  // addressPnlSummary returns a single object, not an array
   const data = (result?.data ?? result) as Record<string, unknown>;
   return {
     realized_pnl_usd: (data?.realized_pnl_usd as number) ?? 0,
@@ -67,6 +75,10 @@ export async function getWalletPnlSummary(params: { address: string; chain?: str
   };
 }
 
+/**
+ * Score a wallet. skipProfiler=true uses volume-only scoring (free).
+ * skipProfiler=false calls addressPnlSummary (10 credits).
+ */
 export async function computeWalletScore(
   address: string,
   chain: string,
@@ -79,7 +91,7 @@ export async function computeWalletScore(
     try {
       pnl = await getWalletPnlSummary({ address, chain });
     } catch {
-      // profiler failed, use volume fallback
+      // profiler failed, fall through to volume scoring
     }
   }
 
@@ -89,13 +101,11 @@ export async function computeWalletScore(
     const compositeScore = Math.round(
       (0.4 * normalizedPnl + 0.35 * pnl.win_rate + 0.25 * consistency) * 100
     );
-
     return {
       address, chain, label: '',
       pnl_90d_pct: pnl.realized_pnl_percent,
       win_rate: pnl.win_rate,
-      avg_hold_hours: 0,
-      consistency,
+      avg_hold_hours: 0, consistency,
       composite_score: Math.max(0, Math.min(100, compositeScore)),
       top_holdings: pnl.top5_tokens,
       bought_volume_usd: buyerData?.bought_volume_usd ?? 0,
@@ -103,7 +113,6 @@ export async function computeWalletScore(
     };
   }
 
-  // Fallback: score from buy/sell volume ratios
   if (buyerData && buyerData.bought_volume_usd > 0) {
     const volumeRatio = buyerData.sold_volume_usd > 0
       ? (buyerData.sold_volume_usd - buyerData.bought_volume_usd) / buyerData.bought_volume_usd
@@ -113,8 +122,7 @@ export async function computeWalletScore(
       label: buyerData.address_label || '',
       pnl_90d_pct: volumeRatio * 100,
       win_rate: volumeRatio > 0 ? 0.6 : 0.4,
-      avg_hold_hours: 0,
-      consistency: 0.5,
+      avg_hold_hours: 0, consistency: 0.5,
       composite_score: Math.max(0, Math.min(100, Math.round(50 + volumeRatio * 50))),
       top_holdings: [],
       bought_volume_usd: buyerData.bought_volume_usd,
@@ -129,73 +137,67 @@ export async function computeWalletScore(
   };
 }
 
+/**
+ * Detect cluster convergence from ALL tokens on the chain.
+ * Uses netflow trader_count as the signal — no per-token API calls needed.
+ * One API call gets the full picture.
+ */
 export async function getClusterSignals(params: { chain?: string; minWallets?: number } = {}): Promise<ClusterSignal[]> {
   const chain = params.chain || 'solana';
   const minWallets = params.minWallets || 3;
 
-  const tokens = await getSmartMoneyNetflow({ chain, limit: 30 });
-  const qualifying = tokens.filter(t => t.trader_count >= minWallets);
-  const signals: ClusterSignal[] = [];
+  // One call — get ALL tokens with smart money activity
+  const allTokens = await getSmartMoneyNetflow({ chain, limit: 200 });
 
-  for (const token of qualifying.slice(0, 10)) {
-    const buyers = await getWhoBoughtSold({ tokenAddress: token.token_address, chain, limit: 15 });
-    const walletScores: WalletScore[] = [];
+  // Every token with trader_count >= minWallets is a cluster signal
+  const converging = allTokens
+    .filter(t => t.trader_count >= minWallets)
+    .sort((a, b) => b.trader_count - a.trader_count || b.net_flow_7d_usd - a.net_flow_7d_usd);
 
-    for (const buyer of buyers.slice(0, 10)) {
-      const score = await computeWalletScore(buyer.address, chain, buyer, { skipProfiler: true });
-      score.label = buyer.address_label || score.label;
-      walletScores.push(score);
-    }
-
-    const scoredWallets = walletScores.filter(w => w.composite_score > 0);
-    if (scoredWallets.length < minWallets) continue;
-
-    const avgScore = scoredWallets.reduce((s, w) => s + w.composite_score, 0) / scoredWallets.length;
-    const signalStrength = (scoredWallets.length * avgScore) / 100;
+  const signals: ClusterSignal[] = converging.map(token => {
+    const signalStrength = Math.round((token.trader_count * (token.net_flow_7d_usd > 0 ? 1.5 : 0.5)) * 100) / 100;
     const conviction: 'low' | 'medium' | 'high' =
-      signalStrength > 4 ? 'high' : signalStrength > 2 ? 'medium' : 'low';
+      token.trader_count >= 7 ? 'high' : token.trader_count >= 5 ? 'medium' : 'low';
 
-    signals.push({
+    return {
       token: token.token_symbol,
       token_address: token.token_address,
       chain,
-      wallets: scoredWallets.sort((a, b) => b.composite_score - a.composite_score),
-      avg_score: Math.round(avgScore),
-      signal_strength: Math.round(signalStrength * 100) / 100,
+      wallets: [],
+      trader_count: token.trader_count,
+      avg_score: 0,
+      signal_strength: signalStrength,
       first_buy_at: new Date().toISOString(),
       window_hours: 24,
       conviction,
       net_flow_7d_usd: token.net_flow_7d_usd,
+      net_flow_24h_usd: token.net_flow_24h_usd,
       market_cap_usd: token.market_cap_usd,
-    });
-  }
+      token_sectors: token.token_sectors,
+      token_age_days: token.token_age_days,
+    };
+  });
 
-  return signals.sort((a, b) => b.signal_strength - a.signal_strength);
+  return signals;
 }
 
 export async function getTradeQuote(params: { tokenAddress: string; amountUsd: number; chain?: string }): Promise<TradeConfirmation> {
   const chain = params.chain || 'solana';
-
   try {
     const { getQuote } = await import('nansen-cli/src/trading.js');
     const result = await getQuote({
-      chain,
-      from: 'SOL',
-      to: params.tokenAddress,
+      chain, from: 'SOL', to: params.tokenAddress,
       amount: String(Math.round(params.amountUsd * 1e9)),
     });
-
     const quote = result.quotes?.[0];
     return {
-      token: '', token_address: params.tokenAddress,
-      amount_usd: params.amountUsd,
+      token: '', token_address: params.tokenAddress, amount_usd: params.amountUsd,
       execution_price: quote ? parseFloat(quote.outputAmount) / 1e9 : 0,
       slippage_pct: 0, tx_hash: '', status: 'quote_only', chain,
     };
   } catch {
     return {
-      token: '', token_address: params.tokenAddress,
-      amount_usd: params.amountUsd,
+      token: '', token_address: params.tokenAddress, amount_usd: params.amountUsd,
       execution_price: 0, slippage_pct: 0, tx_hash: '', status: 'failed', chain,
     };
   }

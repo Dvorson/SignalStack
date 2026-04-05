@@ -4,26 +4,34 @@ import { getSmartMoneyNetflow, getWhoBoughtSold, computeWalletScore } from '@/li
 import type { WalletScore } from '@/lib/nansen/types';
 
 export const scoreWallets = tool({
-  description: 'Score and rank smart money wallets by trading performance across the Solana ecosystem. Scans 20+ tokens and 100+ wallets using Nansen smart money data. Returns a ranked leaderboard.',
+  description: 'Score and rank smart money wallets across ALL tokens on Solana. Fetches the complete smart money netflow (all tokens Nansen tracks), then drills into the top tokens by flow to identify and score individual wallets.',
   inputSchema: z.object({
     chain: z.string().default('solana').describe('Blockchain to analyze'),
-    limit: z.number().default(15).describe('Max wallets to return in leaderboard'),
+    limit: z.number().default(20).describe('Max wallets to return in leaderboard'),
   }),
   execute: async ({ chain, limit }) => {
-    // Phase 1: Wide scan — get tokens and wallets, score from volume (fast, no profiler calls)
-    const tokens = await getSmartMoneyNetflow({ chain, limit: 20 });
-    const walletMap = new Map<string, WalletScore>();
+    // Get ALL tokens with smart money activity (one API call, ~187 tokens on Solana)
+    const allTokens = await getSmartMoneyNetflow({ chain, limit: 200 });
 
-    for (const token of tokens) {
-      const buyers = await getWhoBoughtSold({ tokenAddress: token.token_address, chain, limit: 20 });
+    // Sort by absolute netflow to find the most actively traded
+    const byFlow = [...allTokens].sort((a, b) =>
+      Math.abs(b.net_flow_7d_usd) - Math.abs(a.net_flow_7d_usd)
+    );
+
+    // Drill into top 10 tokens by flow to get wallet addresses
+    const walletMap = new Map<string, WalletScore>();
+    const tokensWithWallets = Math.min(10, byFlow.length);
+
+    for (const token of byFlow.slice(0, tokensWithWallets)) {
+      const buyers = await getWhoBoughtSold({ tokenAddress: token.token_address, chain, limit: 30 });
       for (const buyer of buyers) {
         if (walletMap.has(buyer.address)) {
-          // Wallet seen on multiple tokens — aggregate volume
+          // Seen on multiple tokens — aggregate volume
           const existing = walletMap.get(buyer.address)!;
           existing.bought_volume_usd += buyer.bought_volume_usd;
           existing.sold_volume_usd += buyer.sold_volume_usd;
         } else {
-          // Fast score from volume data only (no profiler API call)
+          // Volume-based scoring (fast, no profiler call)
           const score = await computeWalletScore(buyer.address, chain, buyer, { skipProfiler: true });
           score.label = buyer.address_label || score.label;
           walletMap.set(buyer.address, score);
@@ -31,7 +39,7 @@ export const scoreWallets = tool({
       }
     }
 
-    // Phase 2: Deep enrich — profiler calls on top 10 wallets by volume
+    // Deep enrich top 10 wallets by volume with profiler data
     const byVolume = Array.from(walletMap.values())
       .sort((a, b) => b.bought_volume_usd - a.bought_volume_usd);
 
@@ -53,7 +61,8 @@ export const scoreWallets = tool({
       wallets: ranked,
       chain,
       total_analyzed: walletMap.size,
-      tokens_scanned: tokens.length,
+      tokens_scanned: allTokens.length,
+      tokens_drilled: tokensWithWallets,
       timestamp: new Date().toISOString(),
     };
   },

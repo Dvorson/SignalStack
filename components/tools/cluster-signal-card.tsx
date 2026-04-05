@@ -11,12 +11,16 @@ interface ClusterSignal {
   token_address: string;
   chain: string;
   wallets: ClusterWallet[];
+  trader_count: number;
   avg_score: number;
   signal_strength: number;
   conviction: 'low' | 'medium' | 'high';
   net_flow_7d_usd: number;
+  net_flow_24h_usd: number;
   market_cap_usd: number;
   window_hours: number;
+  token_sectors: string[];
+  token_age_days: number;
 }
 
 function fmtUsd(n: number) {
@@ -49,10 +53,11 @@ function SignalCard({ signal }: { signal: ClusterSignal }) {
       </div>
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3">
         <div><div className="text-[10px] text-muted-foreground uppercase">Strength</div><div className={`text-lg font-bold ${c.color}`}>{signal.signal_strength.toFixed(2)}</div></div>
-        <div><div className="text-[10px] text-muted-foreground uppercase">Wallets</div><div className="text-lg font-bold text-foreground">{signal.wallets.length}</div></div>
+        <div><div className="text-[10px] text-muted-foreground uppercase">SM Wallets</div><div className="text-lg font-bold text-foreground">{signal.trader_count || signal.wallets.length}</div></div>
         <div><div className="text-[10px] text-muted-foreground uppercase">7d Flow</div><div className="text-lg font-bold text-data">{fmtUsd(signal.net_flow_7d_usd)}</div></div>
         <div><div className="text-[10px] text-muted-foreground uppercase">Mkt Cap</div><div className="text-lg font-bold text-muted-foreground">{fmtUsd(signal.market_cap_usd)}</div></div>
       </div>
+      {signal.wallets.length > 0 && (
       <div className="border-t border-border/30 pt-2">
         <div className="text-[10px] text-muted-foreground uppercase mb-1">Converging Wallets (avg: {signal.avg_score.toFixed(0)})</div>
         <div className="flex flex-wrap gap-1.5">
@@ -63,6 +68,7 @@ function SignalCard({ signal }: { signal: ClusterSignal }) {
           ))}
         </div>
       </div>
+      )}
     </div>
   );
 }

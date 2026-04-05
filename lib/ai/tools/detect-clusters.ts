@@ -1,18 +1,24 @@
 import { tool } from 'ai';
 import { z } from 'zod';
-import { getClusterSignals } from '@/lib/nansen/client';
+import { getClusterSignals, getSmartMoneyNetflow } from '@/lib/nansen/client';
 
 export const detectClusters = tool({
-  description: 'Detect cluster convergence signals where multiple smart money wallets are buying the same token. Returns tokens with the strongest consensus.',
+  description: 'Scan ALL tokens on Solana for smart money cluster convergence. Returns every token where multiple smart money wallets are accumulating, sorted by signal strength. One API call covers the entire chain.',
   inputSchema: z.object({
     chain: z.string().default('solana').describe('Blockchain to scan'),
-    minWallets: z.number().default(3).describe('Minimum wallets for a cluster'),
+    minWallets: z.number().default(3).describe('Minimum smart money wallets for a cluster signal'),
   }),
   execute: async ({ chain, minWallets }) => {
-    const signals = await getClusterSignals();
-    const filtered = signals
-      .filter(s => s.chain === chain && s.wallets.length >= minWallets)
-      .sort((a, b) => b.signal_strength - a.signal_strength);
-    return { signals: filtered, chain, total_signals: filtered.length, timestamp: new Date().toISOString() };
+    const signals = await getClusterSignals({ chain, minWallets });
+
+    return {
+      signals,
+      chain,
+      total_signals: signals.length,
+      high_conviction: signals.filter(s => s.conviction === 'high').length,
+      medium_conviction: signals.filter(s => s.conviction === 'medium').length,
+      low_conviction: signals.filter(s => s.conviction === 'low').length,
+      timestamp: new Date().toISOString(),
+    };
   },
 });
