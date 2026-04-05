@@ -9,14 +9,90 @@ import { WalletOverviewCard, WalletOverviewSkeleton } from '@/components/tools/w
 import { TokenScreenerTable, TokenScreenerSkeleton } from '@/components/tools/token-screener-table';
 import { GenericTable, GenericTableSkeleton } from '@/components/tools/generic-table';
 
-const SUGGESTED_QUESTIONS = [
-  'Who are the smartest wallets on Solana?',
-  'What tokens are smart money converging on?',
-  'Screen top tokens on Ethereum by volume',
-  'Show the perp leaderboard on Hyperliquid',
-  'Search prediction markets for crypto',
-  'What are smart money wallets holding?',
+// Every tool gets at least one representative query. Grouped by category.
+const ALL_SUGGESTIONS = [
+  // Smart Money Analytics (5 tools)
+  { q: 'Who are the smartest wallets on Solana?', cat: 'Smart Money' },
+  { q: 'What tokens are smart money converging on?', cat: 'Smart Money' },
+  { q: 'Show me real-time smart money DEX trades', cat: 'Smart Money' },
+  { q: 'What are smart money wallets holding right now?', cat: 'Smart Money' },
+  { q: 'Show smart money perpetual trades on Hyperliquid', cat: 'Smart Money' },
+
+  // Wallet Intelligence (4 tools)
+  { q: 'Analyze wallet 0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045', cat: 'Wallet' },
+  { q: 'Show transactions for vitalik.eth on Ethereum', cat: 'Wallet' },
+  { q: 'Find wallets related to this address', cat: 'Wallet' },
+  { q: 'Compare two whale wallets side by side', cat: 'Wallet' },
+
+  // Token Analysis (6 tools)
+  { q: 'Screen top tokens on Base by 24h volume', cat: 'Token' },
+  { q: 'What is the Nansen Score for PEPE on Ethereum?', cat: 'Token' },
+  { q: 'Are exchanges or whales accumulating ETH?', cat: 'Token' },
+  { q: 'Who are the top holders of SOL?', cat: 'Token' },
+  { q: 'Show recent DEX trades for BONK on Solana', cat: 'Token' },
+  { q: 'Why is smart money buying PUMP?', cat: 'Token' },
+
+  // Perpetual Futures (2 tools)
+  { q: 'Screen Hyperliquid perps by volume', cat: 'Perps' },
+  { q: 'Who are the top perp traders by PnL?', cat: 'Perps' },
+
+  // Prediction Markets (2 tools)
+  { q: 'Search prediction markets for election', cat: 'Prediction' },
+  { q: 'Show details on a Polymarket event', cat: 'Prediction' },
+
+  // Trading (2 tools)
+  { q: 'Get a quote to buy $20 of SOL', cat: 'Trading' },
+  { q: 'Check status of my bridge transaction', cat: 'Trading' },
+
+  // Alerts (1 tool)
+  { q: 'List my Nansen alerts', cat: 'Alerts' },
+  { q: 'Set up an alert for smart money on Arbitrum', cat: 'Alerts' },
+
+  // Search (1 tool)
+  { q: 'Search Nansen for Uniswap', cat: 'Search' },
+
+  // Multi-chain
+  { q: 'What are the top tokens on Arbitrum?', cat: 'Multi-chain' },
+  { q: 'Score smart money wallets on Ethereum', cat: 'Multi-chain' },
+  { q: 'Show smart money flows on Polygon', cat: 'Multi-chain' },
 ];
+
+function getRotatedSuggestions(count: number = 6): typeof ALL_SUGGESTIONS {
+  // Pick one from each category, then fill remaining slots randomly
+  const categories = [...new Set(ALL_SUGGESTIONS.map(s => s.cat))];
+  const picked: typeof ALL_SUGGESTIONS = [];
+  const used = new Set<number>();
+
+  // Shuffle categories
+  for (let i = categories.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [categories[i], categories[j]] = [categories[j], categories[i]];
+  }
+
+  // Pick one per category
+  for (const cat of categories) {
+    if (picked.length >= count) break;
+    const catItems = ALL_SUGGESTIONS
+      .map((s, i) => ({ ...s, idx: i }))
+      .filter(s => s.cat === cat && !used.has(s.idx));
+    if (catItems.length > 0) {
+      const item = catItems[Math.floor(Math.random() * catItems.length)];
+      picked.push(ALL_SUGGESTIONS[item.idx]);
+      used.add(item.idx);
+    }
+  }
+
+  // Fill remaining slots
+  while (picked.length < count) {
+    const remaining = ALL_SUGGESTIONS.filter((_, i) => !used.has(i));
+    if (remaining.length === 0) break;
+    const idx = ALL_SUGGESTIONS.indexOf(remaining[Math.floor(Math.random() * remaining.length)]);
+    picked.push(ALL_SUGGESTIONS[idx]);
+    used.add(idx);
+  }
+
+  return picked;
+}
 
 const TOOL_LOADING: Record<string, string> = {
   scoreWallets: 'Scanning smart money wallets...',
@@ -82,8 +158,11 @@ function renderToolSkeleton(toolName: string) {
 export default function Home() {
   const { messages, sendMessage, status } = useChat();
   const [input, setInput] = useState('');
+  const [suggestions, setSuggestions] = useState(() => getRotatedSuggestions(6));
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const isLoading = status === 'streaming' || status === 'submitted';
+
+  const refreshSuggestions = () => setSuggestions(getRotatedSuggestions(6));
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -125,16 +204,27 @@ export default function Home() {
                 Powered by Nansen CLI with 22 tools covering the full platform.
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full max-w-lg">
-                {SUGGESTED_QUESTIONS.map((q) => (
+                {suggestions.map((s) => (
                   <button
-                    key={q}
-                    onClick={() => handleSuggestion(q)}
-                    className="text-left text-sm px-3 py-2.5 rounded-lg border border-border/50 bg-surface hover:bg-surface-elevated transition-colors text-muted-foreground hover:text-foreground font-mono"
+                    key={s.q}
+                    onClick={() => handleSuggestion(s.q)}
+                    className="text-left text-sm px-3 py-2.5 rounded-lg border border-border/50 bg-surface hover:bg-surface-elevated transition-colors text-muted-foreground hover:text-foreground font-mono group"
                   >
-                    {q}
+                    <span className="text-[9px] text-data/50 uppercase tracking-wider block mb-0.5">{s.cat}</span>
+                    {s.q}
                   </button>
                 ))}
               </div>
+              <button
+                onClick={refreshSuggestions}
+                className="mt-3 text-xs text-muted-foreground/50 hover:text-data transition-colors font-mono flex items-center gap-1"
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="rotate-0 hover:rotate-180 transition-transform">
+                  <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8" />
+                  <path d="M21 3v5h-5" />
+                </svg>
+                more suggestions ({ALL_SUGGESTIONS.length} total across {new Set(ALL_SUGGESTIONS.map(s => s.cat)).size} categories)
+              </button>
             </div>
           )}
 
