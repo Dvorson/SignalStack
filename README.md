@@ -1,36 +1,81 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# SignalStack
 
-## Getting Started
+AI-powered smart money intelligence built on the [Nansen CLI](https://github.com/nansen-ai/nansen-cli).
 
-First, run the development server:
+Ask questions in plain English. SignalStack scores wallets, detects cluster convergence signals, explains why smart money is moving, and can execute trades on Solana.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+![Landing](public/screenshots/landing.png)
+
+## How It Works
+
+SignalStack is a conversational AI agent with four specialized tools powered by Nansen's onchain analytics:
+
+**Wallet Scoring** - Pulls smart money netflow data via `nansen-cli`, cross-references wallet activity across top tokens, and computes a composite score based on PnL (40%), win rate (35%), and consistency (25%).
+
+![Wallet Leaderboard](public/screenshots/wallet-leaderboard.png)
+
+**Cluster Detection** - Identifies tokens where 3+ high-scoring smart money wallets are accumulating within a time window. Signal strength is computed from wallet count and average score. Conviction is rated HIGH/MEDIUM/LOW.
+
+**Signal Explanation** - Gathers wallet profiles, volume data, and token metrics to explain WHY smart money is converging on a token. The AI synthesizes a thesis from the raw data.
+
+![Cluster Signals](public/screenshots/cluster-signals.png)
+
+**Trade Execution** - Quotes and executes DEX swaps on Solana via Nansen's trading API. Maximum $50 per trade with slippage guardrails.
+
+## Architecture
+
+```
+User (chat) --> Claude (tool-use)
+                 |-- scoreWallets --> nansen-cli smart-money + profiler
+                 |-- detectClusters --> netflow convergence analysis
+                 |-- explainSignal --> wallet profiles + token metrics
+                 |-- executeTrade --> nansen-cli swap (Solana)
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+- **Frontend**: Next.js 16, Tailwind v4, AI SDK v6 (`useChat` + `sendMessage`)
+- **AI**: Claude Sonnet 4 with tool-use via `@ai-sdk/anthropic`
+- **Data**: Nansen CLI programmatic API (`nansen-cli/src/api.js`) - direct import, no shell-out
+- **Demo mode**: Realistic mock data from actual Nansen API responses for zero-credit demos
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Nansen CLI Integration
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+SignalStack imports `NansenAPI` directly from `nansen-cli/src/api.js` for programmatic access:
 
-## Learn More
+- `smartMoneyNetflow()` - Token-level smart money flows with trader counts
+- `tokenWhoBoughtSold()` - Wallet addresses and volumes per token
+- `addressPnlSummary()` - Per-wallet PnL, win rate, and trade count
+- `tokenInformation()` - Token metadata, market cap, sectors
 
-To learn more about Next.js, take a look at the following resources:
+API responses validated against real Nansen data (PUMP, BONK, WOJAK, TRIPLET, BUTTCOIN on Solana).
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Setup
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```bash
+# Clone
+git clone https://github.com/Dvorson/SignalStack.git
+cd SignalStack
 
-## Deploy on Vercel
+# Install
+pnpm install
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+# Configure
+cp .env.local.example .env.local
+# Add your ANTHROPIC_API_KEY (required)
+# Add NANSEN_API_KEY (optional, demo mode works without it)
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+# Run
+pnpm dev
+```
+
+Open http://localhost:3000 and ask a question like:
+- "Who are the smartest wallets on Solana?"
+- "What tokens are smart money converging on?"
+- "Why is smart money buying PUMP?"
+
+## Tech Stack
+
+- [Next.js 16](https://nextjs.org) with Turbopack
+- [Tailwind CSS v4](https://tailwindcss.com)
+- [AI SDK v6](https://sdk.vercel.ai) with `@ai-sdk/anthropic`
+- [Nansen CLI](https://github.com/nansen-ai/nansen-cli) for onchain data
+- [Claude Sonnet 4](https://anthropic.com) for reasoning and tool-use

@@ -1,5 +1,5 @@
-import { streamText, stepCountIs } from 'ai';
-import { anthropic } from '@ai-sdk/anthropic';
+import { streamText, stepCountIs, convertToModelMessages } from 'ai';
+import { createAnthropic } from '@ai-sdk/anthropic';
 import { scoreWallets } from '@/lib/ai/tools/score-wallets';
 import { detectClusters } from '@/lib/ai/tools/detect-clusters';
 import { explainSignal } from '@/lib/ai/tools/explain-signal';
@@ -7,16 +7,22 @@ import { executeTrade } from '@/lib/ai/tools/execute-trade';
 
 export const maxDuration = 60;
 
+// System env has empty ANTHROPIC_API_KEY and wrong ANTHROPIC_BASE_URL (from Claude Desktop)
+// Use SS_ANTHROPIC_KEY to avoid conflict with system env
+const anthropic = createAnthropic({
+  baseURL: 'https://api.anthropic.com/v1',
+  apiKey: process.env.SS_ANTHROPIC_KEY || process.env.ANTHROPIC_API_KEY || '',
+});
 const model = anthropic('claude-sonnet-4-20250514');
 
-const systemPrompt = `You are SignalStack — an AI analyst for onchain smart money. You analyze blockchain data from Nansen, score wallets by performance, detect cluster convergence signals, explain why smart money is moving, and can execute trades.
+const systemPromptText = `You are SignalStack — an AI analyst for onchain smart money. You analyze blockchain data from Nansen, score wallets by performance, detect cluster convergence signals, explain why smart money is moving, and can execute trades.
 
 ## Your Tools
 
-- **scoreWallets**: Use when asked about smart wallets, traders, leaderboards, or who's making money. Returns ranked wallets with composite scores, PnL, and win rates.
-- **detectClusters**: Use when asked what smart money is buying, converging on, or where the signals are. Returns tokens where multiple high-scoring wallets are accumulating.
-- **explainSignal**: Use when asked WHY smart money is moving into a token, or to explain a signal. Returns detailed wallet profiles and volume data you should synthesize into a thesis.
-- **executeTrade**: Use when asked to buy, trade, or execute. ALWAYS show the quote first and ask for confirmation. Maximum $50 per trade.
+- **scoreWallets**: Use when asked about smart wallets, traders, leaderboards, or who's making money.
+- **detectClusters**: Use when asked what smart money is buying, converging on, or where the signals are.
+- **explainSignal**: Use when asked WHY smart money is moving into a token.
+- **executeTrade**: Use when asked to buy, trade, or execute. ALWAYS show the quote first and ask for confirmation. Maximum $50.
 
 ## Rules
 
@@ -24,25 +30,29 @@ const systemPrompt = `You are SignalStack — an AI analyst for onchain smart mo
 2. Cite specifics: wallet addresses (truncated), scores, dollar amounts.
 3. Be concise. Lead with the insight, then the evidence.
 4. Chain tools when needed. "What should I buy?" = detectClusters then explainSignal on the top result.
-5. Data is from Nansen smart money analytics. Wallet scores combine PnL (40%), win rate (35%), consistency (25%).
 
 ## Personality
 
-Direct, data-driven, concise. You're an analyst, not a hype machine. Flag risks when you see them. Crypto-native tone.`;
+Direct, data-driven, concise. Crypto-native tone. Flag risks.`;
+
+const allTools = {
+  scoreWallets,
+  detectClusters,
+  explainSignal,
+  executeTrade,
+};
 
 export async function POST(request: Request) {
   const { messages } = await request.json();
+  const modelMessages = await convertToModelMessages(messages, {
+    tools: allTools,
+  });
 
   const result = streamText({
     model,
-    system: systemPrompt,
-    messages,
-    tools: {
-      scoreWallets,
-      detectClusters,
-      explainSignal,
-      executeTrade,
-    },
+    system: systemPromptText,
+    messages: modelMessages,
+    tools: allTools,
     stopWhen: stepCountIs(5),
   });
 
