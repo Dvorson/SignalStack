@@ -10,10 +10,22 @@ async function getApi() {
   return apiInstance;
 }
 
+// The nansen-cli programmatic API returns { data: [...], pagination: {...} }
+// where data is the array of results directly (not nested as data.data)
+function extractArray(result: Record<string, unknown>): unknown[] {
+  const data = result?.data;
+  if (Array.isArray(data)) return data;
+  if (data && typeof data === 'object' && 'data' in data) {
+    const inner = (data as Record<string, unknown>).data;
+    if (Array.isArray(inner)) return inner;
+  }
+  return [];
+}
+
 export async function getSmartMoneyNetflow(params: { chain?: string } = {}): Promise<NetflowToken[]> {
   const api = await getApi();
   const result = await api.smartMoneyNetflow({ chains: [params.chain || 'solana'] });
-  return (result.data?.data || []) as NetflowToken[];
+  return extractArray(result as Record<string, unknown>) as NetflowToken[];
 }
 
 export async function getWhoBoughtSold(params: { tokenAddress: string; chain?: string }): Promise<WhoBoughtSoldEntry[]> {
@@ -22,7 +34,7 @@ export async function getWhoBoughtSold(params: { tokenAddress: string; chain?: s
     tokenAddress: params.tokenAddress,
     chain: params.chain || 'solana',
   });
-  return (result.data?.data || []) as WhoBoughtSoldEntry[];
+  return extractArray(result as Record<string, unknown>) as WhoBoughtSoldEntry[];
 }
 
 export async function getWalletPnlSummary(params: { address: string; chain?: string; days?: number }): Promise<{
@@ -39,13 +51,15 @@ export async function getWalletPnlSummary(params: { address: string; chain?: str
     chain: params.chain || 'solana',
     days: params.days || 90,
   });
+  // addressPnlSummary returns a single object, not an array
+  const data = (result?.data ?? result) as Record<string, unknown>;
   return {
-    realized_pnl_usd: (result.data as Record<string, number>)?.realized_pnl_usd ?? 0,
-    realized_pnl_percent: (result.data as Record<string, number>)?.realized_pnl_percent ?? 0,
-    win_rate: (result.data as Record<string, number>)?.win_rate ?? 0,
-    traded_times: (result.data as Record<string, number>)?.traded_times ?? 0,
-    traded_token_count: (result.data as Record<string, number>)?.traded_token_count ?? 0,
-    top5_tokens: ((result.data as Record<string, unknown>)?.top5_tokens as string[]) ?? [],
+    realized_pnl_usd: (data?.realized_pnl_usd as number) ?? 0,
+    realized_pnl_percent: (data?.realized_pnl_percent as number) ?? 0,
+    win_rate: (data?.win_rate as number) ?? 0,
+    traded_times: (data?.traded_times as number) ?? 0,
+    traded_token_count: (data?.traded_token_count as number) ?? 0,
+    top5_tokens: (data?.top5_tokens as string[]) ?? [],
   };
 }
 
@@ -54,9 +68,14 @@ export async function computeWalletScore(
   chain: string,
   buyerData?: WhoBoughtSoldEntry,
 ): Promise<WalletScore> {
-  const pnl = await getWalletPnlSummary({ address, chain });
+  // Try profiler, but don't fail if it returns empty or errors
+  let pnl;
+  try {
+    pnl = await getWalletPnlSummary({ address, chain });
+  } catch {
+    pnl = { realized_pnl_usd: 0, realized_pnl_percent: 0, win_rate: 0, traded_times: 0, traded_token_count: 0, top5_tokens: [] };
+  }
 
-  // If profiler returns real data, use it
   if (pnl.traded_times > 0) {
     const consistency = pnl.win_rate > 0 ? Math.max(0, 1 - (Math.abs(pnl.realized_pnl_percent) / 200)) : 0;
     const normalizedPnl = Math.min(1, Math.max(0, (pnl.realized_pnl_percent + 100) / 300));
@@ -65,9 +84,7 @@ export async function computeWalletScore(
     );
 
     return {
-      address,
-      chain,
-      label: '',
+      address, chain, label: '',
       pnl_90d_pct: pnl.realized_pnl_percent,
       win_rate: pnl.win_rate,
       avg_hold_hours: 0,
@@ -79,14 +96,13 @@ export async function computeWalletScore(
     };
   }
 
-  // Fallback: score from buy/sell volume ratios if profiler data is empty
+  // Fallback: score from buy/sell volume ratios
   if (buyerData && buyerData.bought_volume_usd > 0) {
     const volumeRatio = buyerData.sold_volume_usd > 0
       ? (buyerData.sold_volume_usd - buyerData.bought_volume_usd) / buyerData.bought_volume_usd
       : 0;
     return {
-      address,
-      chain,
+      address, chain,
       label: buyerData.address_label || '',
       pnl_90d_pct: volumeRatio * 100,
       win_rate: volumeRatio > 0 ? 0.6 : 0.4,
@@ -99,19 +115,10 @@ export async function computeWalletScore(
     };
   }
 
-  // No data at all
   return {
-    address,
-    chain,
-    label: '',
-    pnl_90d_pct: 0,
-    win_rate: 0,
-    avg_hold_hours: 0,
-    consistency: 0,
-    composite_score: 0,
-    top_holdings: [],
-    bought_volume_usd: 0,
-    sold_volume_usd: 0,
+    address, chain, label: '',
+    pnl_90d_pct: 0, win_rate: 0, avg_hold_hours: 0, consistency: 0, composite_score: 0,
+    top_holdings: [], bought_volume_usd: 0, sold_volume_usd: 0,
   };
 }
 
@@ -119,20 +126,16 @@ export async function getClusterSignals(params: { chain?: string; minWallets?: n
   const chain = params.chain || 'solana';
   const minWallets = params.minWallets || 3;
 
-  // Get tokens with smart money activity
   const tokens = await getSmartMoneyNetflow({ chain });
-
-  // Filter tokens where multiple smart money wallets are active
   const qualifying = tokens.filter(t => t.trader_count >= minWallets);
   const signals: ClusterSignal[] = [];
 
-  for (const token of qualifying.slice(0, 5)) {
-    // Get wallets trading this token
+  // Limit to top 3 tokens and 5 wallets each to conserve API credits
+  for (const token of qualifying.slice(0, 3)) {
     const buyers = await getWhoBoughtSold({ tokenAddress: token.token_address, chain });
-
-    // Score each wallet
     const walletScores: WalletScore[] = [];
-    for (const buyer of buyers.slice(0, 8)) {
+
+    for (const buyer of buyers.slice(0, 5)) {
       const score = await computeWalletScore(buyer.address, chain, buyer);
       score.label = buyer.address_label || score.label;
       walletScores.push(score);
@@ -173,30 +176,21 @@ export async function getTradeQuote(params: { tokenAddress: string; amountUsd: n
       chain,
       from: 'SOL',
       to: params.tokenAddress,
-      amount: String(Math.round(params.amountUsd * 1e9)), // lamports
+      amount: String(Math.round(params.amountUsd * 1e9)),
     });
 
     const quote = result.quotes?.[0];
     return {
-      token: '',
-      token_address: params.tokenAddress,
+      token: '', token_address: params.tokenAddress,
       amount_usd: params.amountUsd,
       execution_price: quote ? parseFloat(quote.outputAmount) / 1e9 : 0,
-      slippage_pct: 0,
-      tx_hash: '',
-      status: 'quote_only',
-      chain,
+      slippage_pct: 0, tx_hash: '', status: 'quote_only', chain,
     };
-  } catch (error) {
+  } catch {
     return {
-      token: '',
-      token_address: params.tokenAddress,
+      token: '', token_address: params.tokenAddress,
       amount_usd: params.amountUsd,
-      execution_price: 0,
-      slippage_pct: 0,
-      tx_hash: '',
-      status: 'failed',
-      chain,
+      execution_price: 0, slippage_pct: 0, tx_hash: '', status: 'failed', chain,
     };
   }
 }

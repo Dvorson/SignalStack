@@ -10,14 +10,17 @@ export const scoreWallets = tool({
     limit: z.number().default(10).describe('Max wallets to return'),
   }),
   execute: async ({ chain, limit }) => {
+    // Get top 3 tokens by smart money flow to conserve API credits
     const tokens = await getSmartMoneyNetflow({ chain });
-    const topTokens = tokens.slice(0, 5);
+    const topTokens = tokens.slice(0, 3);
     const walletMap = new Map<string, WalletScore>();
 
     for (const token of topTokens) {
       const buyers = await getWhoBoughtSold({ tokenAddress: token.token_address, chain });
-      for (const buyer of buyers) {
+      // Limit to top 5 buyers per token to conserve credits
+      for (const buyer of buyers.slice(0, 5)) {
         if (!walletMap.has(buyer.address)) {
+          // Score from volume data directly (avoids expensive profiler calls)
           const score = await computeWalletScore(buyer.address, chain, buyer);
           score.label = buyer.address_label || score.label;
           walletMap.set(buyer.address, score);
