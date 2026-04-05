@@ -12,10 +12,11 @@ export const explainSignal = tool({
   execute: async ({ tokenSymbol, tokenAddress, chain }) => {
     const tokens = await getSmartMoneyNetflow({ chain });
     const tokenData = tokens.find(t => t.token_address === tokenAddress || t.token_symbol === tokenSymbol);
-    const buyers = await getWhoBoughtSold({ tokenAddress, chain });
+    const buyers = await getWhoBoughtSold({ tokenAddress, chain, limit: 20 });
 
     const profiles = [];
-    for (const buyer of buyers.slice(0, 5)) {
+    for (const buyer of buyers.slice(0, 10)) {
+      // Deep profiler for explain — this is the detailed view
       const score = await computeWalletScore(buyer.address, chain, buyer);
       profiles.push({
         address: buyer.address,

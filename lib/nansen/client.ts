@@ -22,17 +22,21 @@ function extractArray(result: Record<string, unknown>): unknown[] {
   return [];
 }
 
-export async function getSmartMoneyNetflow(params: { chain?: string } = {}): Promise<NetflowToken[]> {
+export async function getSmartMoneyNetflow(params: { chain?: string; limit?: number } = {}): Promise<NetflowToken[]> {
   const api = await getApi();
-  const result = await api.smartMoneyNetflow({ chains: [params.chain || 'solana'] });
+  const result = await api.smartMoneyNetflow({
+    chains: [params.chain || 'solana'],
+    limit: params.limit || 50,
+  });
   return extractArray(result as Record<string, unknown>) as NetflowToken[];
 }
 
-export async function getWhoBoughtSold(params: { tokenAddress: string; chain?: string }): Promise<WhoBoughtSoldEntry[]> {
+export async function getWhoBoughtSold(params: { tokenAddress: string; chain?: string; limit?: number }): Promise<WhoBoughtSoldEntry[]> {
   const api = await getApi();
   const result = await api.tokenWhoBoughtSold({
     tokenAddress: params.tokenAddress,
     chain: params.chain || 'solana',
+    limit: params.limit || 30,
   });
   return extractArray(result as Record<string, unknown>) as WhoBoughtSoldEntry[];
 }
@@ -67,13 +71,16 @@ export async function computeWalletScore(
   address: string,
   chain: string,
   buyerData?: WhoBoughtSoldEntry,
+  options?: { skipProfiler?: boolean },
 ): Promise<WalletScore> {
-  // Try profiler, but don't fail if it returns empty or errors
-  let pnl;
-  try {
-    pnl = await getWalletPnlSummary({ address, chain });
-  } catch {
-    pnl = { realized_pnl_usd: 0, realized_pnl_percent: 0, win_rate: 0, traded_times: 0, traded_token_count: 0, top5_tokens: [] };
+  let pnl = { realized_pnl_usd: 0, realized_pnl_percent: 0, win_rate: 0, traded_times: 0, traded_token_count: 0, top5_tokens: [] as string[] };
+
+  if (!options?.skipProfiler) {
+    try {
+      pnl = await getWalletPnlSummary({ address, chain });
+    } catch {
+      // profiler failed, use volume fallback
+    }
   }
 
   if (pnl.traded_times > 0) {
@@ -126,17 +133,16 @@ export async function getClusterSignals(params: { chain?: string; minWallets?: n
   const chain = params.chain || 'solana';
   const minWallets = params.minWallets || 3;
 
-  const tokens = await getSmartMoneyNetflow({ chain });
+  const tokens = await getSmartMoneyNetflow({ chain, limit: 30 });
   const qualifying = tokens.filter(t => t.trader_count >= minWallets);
   const signals: ClusterSignal[] = [];
 
-  // Limit to top 3 tokens and 5 wallets each to conserve API credits
-  for (const token of qualifying.slice(0, 3)) {
-    const buyers = await getWhoBoughtSold({ tokenAddress: token.token_address, chain });
+  for (const token of qualifying.slice(0, 10)) {
+    const buyers = await getWhoBoughtSold({ tokenAddress: token.token_address, chain, limit: 15 });
     const walletScores: WalletScore[] = [];
 
-    for (const buyer of buyers.slice(0, 5)) {
-      const score = await computeWalletScore(buyer.address, chain, buyer);
+    for (const buyer of buyers.slice(0, 10)) {
+      const score = await computeWalletScore(buyer.address, chain, buyer, { skipProfiler: true });
       score.label = buyer.address_label || score.label;
       walletScores.push(score);
     }

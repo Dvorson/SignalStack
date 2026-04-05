@@ -29,12 +29,12 @@ function pnlColor(p: number) {
   return p >= 0 ? 'text-profit' : 'text-loss';
 }
 
-export function WalletLeaderboard({ data }: { data: { wallets: WalletScore[]; chain: string; total_analyzed: number } }) {
+export function WalletLeaderboard({ data }: { data: { wallets: WalletScore[]; chain: string; total_analyzed: number; tokens_scanned?: number } }) {
   return (
     <div className="rounded-lg border border-border/50 bg-surface p-4 font-mono text-sm">
       <div className="flex items-center justify-between mb-3">
         <span className="text-data font-bold text-xs uppercase tracking-wider">Smart Money Leaderboard</span>
-        <span className="text-xs text-muted-foreground">{data.total_analyzed} wallets</span>
+        <span className="text-xs text-muted-foreground">{data.total_analyzed} wallets{data.tokens_scanned ? ` across ${data.tokens_scanned} tokens` : ''}</span>
       </div>
       <div className="space-y-1.5">
         {data.wallets.map((w, i) => (
