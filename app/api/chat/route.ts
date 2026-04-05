@@ -7,11 +7,9 @@ import { executeTrade } from '@/lib/ai/tools/execute-trade';
 
 export const maxDuration = 60;
 
-// System env has empty ANTHROPIC_API_KEY and wrong ANTHROPIC_BASE_URL (from Claude Desktop)
-// Use SS_ANTHROPIC_KEY to avoid conflict with system env
 const anthropic = createAnthropic({
-  baseURL: 'https://api.anthropic.com/v1',
-  apiKey: process.env.SS_ANTHROPIC_KEY || process.env.ANTHROPIC_API_KEY || '',
+  baseURL: process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com/v1',
+  apiKey: process.env.ANTHROPIC_API_KEY || '',
 });
 const model = anthropic('claude-sonnet-4-20250514');
 

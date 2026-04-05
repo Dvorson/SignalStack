@@ -1,6 +1,6 @@
 import { tool } from 'ai';
 import { z } from 'zod';
-import { getSmartMoneyNetflow, getWhoBoughtSold, getCachedWalletScore } from '@/lib/nansen/client';
+import { getSmartMoneyNetflow, getWhoBoughtSold, computeWalletScore } from '@/lib/nansen/client';
 import type { WalletScore } from '@/lib/nansen/types';
 
 export const scoreWallets = tool({
@@ -18,22 +18,9 @@ export const scoreWallets = tool({
       const buyers = await getWhoBoughtSold({ tokenAddress: token.token_address, chain });
       for (const buyer of buyers) {
         if (!walletMap.has(buyer.address)) {
-          const cached = await getCachedWalletScore(buyer.address);
-          if (cached) {
-            walletMap.set(buyer.address, cached);
-          } else {
-            const volumeRatio = buyer.sold_volume_usd > 0
-              ? (buyer.sold_volume_usd - buyer.bought_volume_usd) / buyer.bought_volume_usd
-              : 0;
-            walletMap.set(buyer.address, {
-              address: buyer.address, chain, label: buyer.address_label || 'Unknown',
-              pnl_90d_pct: volumeRatio * 100, win_rate: volumeRatio > 0 ? 0.6 : 0.4,
-              avg_hold_hours: 48, consistency: 0.5,
-              composite_score: Math.max(0, Math.min(100, 50 + volumeRatio * 50)),
-              top_holdings: [token.token_symbol],
-              bought_volume_usd: buyer.bought_volume_usd, sold_volume_usd: buyer.sold_volume_usd,
-            });
-          }
+          const score = await computeWalletScore(buyer.address, chain, buyer);
+          score.label = buyer.address_label || score.label;
+          walletMap.set(buyer.address, score);
         }
       }
     }

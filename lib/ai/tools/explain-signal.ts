@@ -1,6 +1,6 @@
 import { tool } from 'ai';
 import { z } from 'zod';
-import { getSmartMoneyNetflow, getWhoBoughtSold, getCachedWalletScore } from '@/lib/nansen/client';
+import { getSmartMoneyNetflow, getWhoBoughtSold, computeWalletScore } from '@/lib/nansen/client';
 
 export const explainSignal = tool({
   description: 'Gather detailed context about why smart money is moving into a token. Returns wallet profiles, volume data, and token metrics.',
@@ -16,13 +16,17 @@ export const explainSignal = tool({
 
     const profiles = [];
     for (const buyer of buyers.slice(0, 5)) {
-      const score = await getCachedWalletScore(buyer.address);
+      const score = await computeWalletScore(buyer.address, chain, buyer);
       profiles.push({
-        address: buyer.address, label: buyer.address_label || score?.label || 'Unknown',
-        score: score?.composite_score || 0, pnl_pct: score?.pnl_90d_pct || 0,
-        win_rate: score?.win_rate || 0, bought_usd: buyer.bought_volume_usd,
-        sold_usd: buyer.sold_volume_usd, net_position: buyer.bought_volume_usd - buyer.sold_volume_usd,
-        top_holdings: score?.top_holdings || [],
+        address: buyer.address,
+        label: buyer.address_label || score.label || '',
+        score: score.composite_score,
+        pnl_pct: score.pnl_90d_pct,
+        win_rate: score.win_rate,
+        bought_usd: buyer.bought_volume_usd,
+        sold_usd: buyer.sold_volume_usd,
+        net_position: buyer.bought_volume_usd - buyer.sold_volume_usd,
+        top_holdings: score.top_holdings,
       });
     }
 
