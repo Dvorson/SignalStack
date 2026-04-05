@@ -198,24 +198,46 @@ export async function getClusterSignals(params: { chain?: string; minWallets?: n
   return signals;
 }
 
-export async function getTradeQuote(params: { tokenAddress: string; amountUsd: number; chain?: string }): Promise<TradeConfirmation> {
+export async function getTradeQuote(params: { from: string; to: string; amountUsd: number; chain?: string }): Promise<TradeConfirmation & { error?: string }> {
   const chain = params.chain || 'solana';
   try {
     const { getQuote } = await import('nansen-cli/src/trading.js');
+
+    // The Nansen trade API expects amount in the sell token's smallest unit.
+    // For USDC (6 decimals): $20 = 20_000_000
+    // For SOL (9 decimals): use lamports
+    // Default to 6 decimals (USDC-like) for USD-denominated trades
+    const decimals = params.from.toUpperCase() === 'SOL' ? 9 : 6;
+    const rawAmount = String(Math.round(params.amountUsd * 10 ** decimals));
+
     const result = await getQuote({
-      chain, from: 'SOL', to: params.tokenAddress,
-      amount: String(Math.round(params.amountUsd * 1e9)),
+      chain,
+      from: params.from,
+      to: params.to,
+      amount: rawAmount,
     });
+
     const quote = result.quotes?.[0];
+    if (!quote) {
+      return {
+        token: params.to, token_address: params.to, amount_usd: params.amountUsd,
+        execution_price: 0, slippage_pct: 0, tx_hash: '', status: 'failed', chain,
+        error: 'No quote returned. This trading pair may not be supported.',
+      };
+    }
+
     return {
-      token: '', token_address: params.tokenAddress, amount_usd: params.amountUsd,
-      execution_price: quote ? parseFloat(quote.outputAmount) / 1e9 : 0,
-      slippage_pct: 0, tx_hash: '', status: 'quote_only', chain,
+      token: params.to, token_address: params.to, amount_usd: params.amountUsd,
+      execution_price: parseFloat(quote.outputAmount) / 10 ** decimals,
+      slippage_pct: quote.fees || 0,
+      tx_hash: '', status: 'quote_only', chain,
     };
-  } catch {
+  } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : 'Unknown error';
     return {
-      token: '', token_address: params.tokenAddress, amount_usd: params.amountUsd,
+      token: params.to, token_address: params.to, amount_usd: params.amountUsd,
       execution_price: 0, slippage_pct: 0, tx_hash: '', status: 'failed', chain,
+      error: `Trade quote failed: ${errorMsg}`,
     };
   }
 }

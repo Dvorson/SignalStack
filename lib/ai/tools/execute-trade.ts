@@ -3,23 +3,38 @@ import { z } from 'zod';
 import { getTradeQuote } from '@/lib/nansen/client';
 
 export const executeTrade = tool({
-  description: 'Get a swap quote on Solana. Shows quote for user confirmation. Max $50.',
+  description: 'Get a DEX swap quote on Solana or EVM chains. Shows quote details for user confirmation before execution. Max $50 per trade. Specify what token to buy and what to sell (defaults to USDC).',
   inputSchema: z.object({
-    tokenSymbol: z.string().describe('Token to buy'),
-    tokenAddress: z.string().describe('Token contract address'),
-    amountUsd: z.number().describe('Amount in USD'),
-    chain: z.string().default('solana'),
+    buyToken: z.string().describe('Token symbol or address to BUY (e.g., SOL, ETH, BONK)'),
+    sellToken: z.string().default('USDC').describe('Token symbol or address to SELL (e.g., USDC, SOL). Defaults to USDC.'),
+    amountUsd: z.number().describe('Amount in USD to spend'),
+    chain: z.string().default('solana').describe('Chain to trade on'),
   }),
-  execute: async ({ tokenSymbol, tokenAddress, amountUsd, chain }) => {
+  execute: async ({ buyToken, sellToken, amountUsd, chain }) => {
     if (amountUsd > 50) {
-      return { error: 'Maximum trade size is $50. Please use a smaller amount.', requested_amount: amountUsd };
+      return { error: 'Maximum trade size is $50 for safety. Please use a smaller amount.', requested_amount: amountUsd };
     }
-    const quote = await getTradeQuote({ tokenAddress, amountUsd });
+
+    if (buyToken.toUpperCase() === sellToken.toUpperCase()) {
+      return { error: `Cannot swap ${buyToken} for ${sellToken} — they are the same token.` };
+    }
+
+    const quote = await getTradeQuote({
+      from: sellToken,
+      to: buyToken,
+      amountUsd,
+      chain,
+    });
+
     return {
-      ...quote, token: tokenSymbol,
+      ...quote,
+      token: buyToken,
+      sell_token: sellToken,
       message: quote.status === 'quote_only'
-        ? `Quote: Buy ${tokenSymbol} for $${amountUsd} on ${chain}. Slippage: ${quote.slippage_pct}%.`
-        : `Executed: Bought ${tokenSymbol} for $${amountUsd}. TX: ${quote.tx_hash}`,
+        ? `Quote ready: Swap ~$${amountUsd} ${sellToken} → ${buyToken} on ${chain}. Review the details above.`
+        : quote.status === 'failed'
+          ? `Trade quote failed. ${quote.error || 'The trading API may not support this pair or chain.'}`
+          : `Trade submitted. TX: ${quote.tx_hash}`,
     };
   },
 });
