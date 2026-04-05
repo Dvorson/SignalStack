@@ -15,7 +15,7 @@ export async function getSmartMoneyNetflow(params: { chain?: string } = {}): Pro
   const { default: NansenAPI } = await import('nansen-cli/src/api.js');
   const api = new NansenAPI(process.env.NANSEN_API_KEY);
   const result = await api.smartMoneyNetflow({ chains: [params.chain || 'solana'] });
-  return result.data?.data || [];
+  return (result.data?.data || []) as NetflowToken[];
 }
 
 export async function getWhoBoughtSold(params: { tokenAddress: string; chain?: string }): Promise<WhoBoughtSoldEntry[]> {
@@ -26,7 +26,7 @@ export async function getWhoBoughtSold(params: { tokenAddress: string; chain?: s
   const { default: NansenAPI } = await import('nansen-cli/src/api.js');
   const api = new NansenAPI(process.env.NANSEN_API_KEY);
   const result = await api.tokenWhoBoughtSold({ tokenAddress: params.tokenAddress, chain: params.chain || 'solana' });
-  return result.data?.data || [];
+  return (result.data?.data || []) as WhoBoughtSoldEntry[];
 }
 
 export async function getCachedWalletScore(address: string): Promise<WalletScore | null> {

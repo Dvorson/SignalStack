@@ -5,7 +5,7 @@ import type { WalletScore } from '@/lib/nansen/types';
 
 export const scoreWallets = tool({
   description: 'Score and rank smart money wallets by trading performance. Returns a leaderboard with PnL, win rate, and composite scores.',
-  parameters: z.object({
+  inputSchema: z.object({
     chain: z.string().default('solana').describe('Blockchain to analyze'),
     limit: z.number().default(10).describe('Max wallets to return'),
   }),

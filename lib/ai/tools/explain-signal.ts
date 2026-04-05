@@ -4,7 +4,7 @@ import { getSmartMoneyNetflow, getWhoBoughtSold, getCachedWalletScore } from '@/
 
 export const explainSignal = tool({
   description: 'Gather detailed context about why smart money is moving into a token. Returns wallet profiles, volume data, and token metrics.',
-  parameters: z.object({
+  inputSchema: z.object({
     tokenSymbol: z.string().describe('Token symbol'),
     tokenAddress: z.string().describe('Token contract address'),
     chain: z.string().default('solana'),

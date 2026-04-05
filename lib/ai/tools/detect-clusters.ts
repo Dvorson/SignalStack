@@ -4,7 +4,7 @@ import { getClusterSignals } from '@/lib/nansen/client';
 
 export const detectClusters = tool({
   description: 'Detect cluster convergence signals where multiple smart money wallets are buying the same token. Returns tokens with the strongest consensus.',
-  parameters: z.object({
+  inputSchema: z.object({
     chain: z.string().default('solana').describe('Blockchain to scan'),
     minWallets: z.number().default(3).describe('Minimum wallets for a cluster'),
   }),
