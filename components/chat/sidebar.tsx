@@ -18,7 +18,7 @@ const RULE_CHIPS = [
 
 export function Sidebar() {
   const [chats, setChats] = useState<Chat[]>([]);
-  const [isOpen, setIsOpen] = useState(true);
+  const [isOpen, setIsOpen] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
 
