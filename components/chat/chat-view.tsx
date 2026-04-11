@@ -2,6 +2,7 @@
 
 import { useChat } from '@ai-sdk/react';
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { WalletLeaderboard, WalletLeaderboardSkeleton } from '@/components/tools/wallet-leaderboard';
 import { ClusterSignalCards, ClusterSignalSkeleton } from '@/components/tools/cluster-signal-card';
 import { TradeConfirmation, TradeSkeleton } from '@/components/tools/trade-confirmation';
@@ -125,13 +126,22 @@ export function ChatView({ chatId, onTitleUpdate }: ChatViewProps) {
   const [input, setInput] = useState('');
   const [suggestions, setSuggestions] = useState(() => getRotatedSuggestions(6));
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const seededPromptRef = useRef(false);
+  const searchParams = useSearchParams();
   const isLoading = status === 'streaming' || status === 'submitted';
   const lastSavedRef = useRef(0);
   const titleSetRef = useRef(false);
+  const initialPrompt = searchParams.get('prompt');
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  useEffect(() => {
+    if (!initialPrompt || seededPromptRef.current || messages.length > 0 || status !== 'ready') return;
+    seededPromptRef.current = true;
+    sendMessage({ text: initialPrompt });
+  }, [initialPrompt, messages.length, sendMessage, status]);
 
   // Persist messages to DB after each exchange completes
   useEffect(() => {

@@ -30,9 +30,8 @@ export default function RootLayout({
     >
       <body className="min-h-dvh flex antialiased">
         <Sidebar />
-        {/* Header */}
-        <div className="flex-1 flex flex-col ml-0 transition-all">
-          <header className="flex items-center px-4 py-3 border-b border-border/50 bg-background/80 backdrop-blur-sm sticky top-0 z-10 pl-14">
+        <div className="flex-1 flex flex-col min-w-0">
+          <header className="sticky top-0 z-10 flex items-center border-b border-border/50 bg-background/80 px-4 py-3 pl-14 backdrop-blur-sm lg:pl-4">
             <div className="flex items-center gap-2">
               <span className="text-data font-bold font-mono text-sm tracking-wider">SIGNALSTACK</span>
               <span className="text-[10px] text-muted-foreground font-mono">powered by Nansen</span>

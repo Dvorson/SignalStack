@@ -1,4 +1,5 @@
 import { getChat, getMessages, deleteChat, updateChatTitle } from '@/lib/db';
+import { publishEvent } from '@/lib/realtime/events';
 
 export async function GET(
   _request: Request,
@@ -27,6 +28,7 @@ export async function PATCH(
   const body = await request.json();
   if ((body as { title?: string }).title) {
     updateChatTitle(id, (body as { title: string }).title);
+    publishEvent('chats', { type: 'chat-updated', chatId: id, timestamp: new Date().toISOString() });
   }
   return Response.json({ success: true });
 }
@@ -37,5 +39,6 @@ export async function DELETE(
 ) {
   const { id } = await params;
   deleteChat(id);
+  publishEvent('chats', { type: 'chat-deleted', chatId: id, timestamp: new Date().toISOString() });
   return Response.json({ success: true });
 }
