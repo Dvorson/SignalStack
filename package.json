@@ -8,7 +8,7 @@
     "start": "next start",
     "test": "vitest run",
     "test:watch": "vitest",
-    "pretest:e2e": "node scripts/seed-e2e-db.mjs && pnpm build",
+    "pretest:e2e": "SIGNALSTACK_DB_PATH=.tmp/playwright/signalstack.db node scripts/seed-e2e-db.mjs && pnpm build",
     "test:e2e": "playwright test"
   },
   "dependencies": {

@@ -2,8 +2,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import Database from 'better-sqlite3';
 
-const outputDir = path.join(process.cwd(), '.tmp', 'e2e');
-const dbPath = path.join(outputDir, 'signalstack.db');
+const dbPath = process.env.SIGNALSTACK_DB_PATH
+  ? path.resolve(process.cwd(), process.env.SIGNALSTACK_DB_PATH)
+  : path.join(process.cwd(), '.tmp', 'e2e', 'signalstack.db');
+const outputDir = path.dirname(dbPath);
 
 fs.mkdirSync(outputDir, { recursive: true });
 fs.rmSync(dbPath, { force: true });
